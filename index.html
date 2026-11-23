@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Renseignements palettes</title>
+<style>
+:root{--bg:#f5f5f2;--card:#fff;--tx:#1b1b1a;--mu:#6b6b66;--ac:#1d5fd1;--bd:#dedad3;--dg:#c0392b;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161615;--card:#222221;--tx:#f0f0ec;--mu:#9a9a94;--ac:#6ea1ff;--bd:#383836;--dg:#ff7a6b}}
+:root[data-theme="dark"]{--bg:#161615;--card:#222221;--tx:#f0f0ec;--mu:#9a9a94;--ac:#6ea1ff;--bd:#383836;--dg:#ff7a6b}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;margin:0 auto;padding:12px}
+h1{font-size:20px;margin:4px 0 12px}
+input[type=text]{width:100%;padding:12px;font-size:16px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx)}
+button,.btn{font:inherit;padding:12px 14px;border-radius:10px;border:0;background:var(--ac);color:#fff;font-weight:600;cursor:pointer;display:inline-block;text-align:center}
+.sec{background:var(--card);color:var(--tx);border:1px solid var(--bd)}
+.row{display:flex;gap:8px;margin:8px 0}.row>*{flex:1}.row>input{flex:2}
+.item{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px;margin:8px 0}
+.item .t{flex:1;min-width:0}.item .t b{display:block;overflow-wrap:anywhere}.item small{color:var(--mu)}
+.item img{width:64px;height:64px;object-fit:cover;border-radius:8px;flex:none}
+.x{background:none;color:var(--dg);padding:8px;flex:none}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:10px 0}
+#prev{width:100%;max-height:260px;object-fit:contain;border-radius:10px;margin-top:8px}
+#big{position:fixed;inset:0;background:#000d;display:none;align-items:center;justify-content:center;z-index:9}
+#big img{max-width:100%;max-height:100%}
+.mu{color:var(--mu);font-size:14px}
+</style><script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script></head><body>
+<div id="app"></div><div id="big"></div>
+<script>
+let db,pallet=null,q='',photo=null;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function open(){return new Promise((r,j)=>{const o=indexedDB.open('palettes',1);o.onupgradeneeded=()=>{const d=o.result;d.createObjectStore('pallets',{keyPath:'name'});d.createObjectStore('tools',{keyPath:'id',autoIncrement:true})};o.onsuccess=()=>r(o.result);o.onerror=()=>j(o.error)})}
+function tx(st,mode,fn){return new Promise((r,j)=>{const t=db.transaction(st,mode);const q=fn(t.objectStore(st));t.oncomplete=()=>r(q&&q.result);t.onerror=()=>j(t.error)})}
+function shrink(file){return new Promise((r,j)=>{const u=URL.createObjectURL(file),i=new Image();i.onload=()=>{const k=Math.min(1,1000/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*k;c.height=i.height*k;c.getContext('2d').drawImage(i,0,0,c.width,c.height);URL.revokeObjectURL(u);r(c.toDataURL('image/jpeg',.72))};i.onerror=j;i.src=u})}
+async function home(){
+ const [P,T]=await Promise.all([tx('pallets','readonly',s=>s.getAll()),tx('tools','readonly',s=>s.getAll())]);
+ const n=q.trim().toLowerCase();
+ const cnt={};T.forEach(t=>cnt[t.pallet]=(cnt[t.pallet]||0)+1);
+ const ps=P.map(p=>p.name).sort((a,b)=>a.localeCompare(b,'fr',{numeric:true})).filter(p=>!n||p.toLowerCase().includes(n));
+ const ts=n?T.filter(t=>t.name.toLowerCase().includes(n)):[];
+ $('#app').innerHTML=`<h1>Palettes (${P.length}) · Outillages (${T.length})</h1>
+ <input type="text" id="s" placeholder="Rechercher une palette ou une désignation" value="${esc(q)}">
+ <div class="row"><input type="text" id="np" placeholder="Nouvelle palette (n° ou nom)"><button id="addp">Ajouter</button></div>
+ ${ts.length?'<p class="mu">Outillages trouvés</p>'+ts.map(t=>`<div class="item" data-p="${esc(t.pallet)}"><img src="${t.photo}" data-big="1"><div class="t"><b>${esc(t.name)}</b><small>Palette ${esc(t.pallet)}</small></div></div>`).join(''):''}
+ <p class="mu">Palettes</p>
+ ${ps.map(p=>`<div class="item" data-p="${esc(p)}"><div class="t"><b>Palette ${esc(p)}</b><small>${cnt[p]||0} outillage(s)</small></div></div>`).join('')||'<p class="mu">Aucune palette. Ajoutes-en une ci-dessus.</p>'}
+ <div class="row"><button id="xl">📥 Exporter en Excel</button></div><p class="mu" id="xm">Les données restent sur ce téléphone (navigateur).</p>`;
+ const s=$('#s');s.oninput=async()=>{q=s.value;const p=s.selectionStart;await home();const e=$('#s');e.focus();e.setSelectionRange(p,p)};
+ $('#addp').onclick=async()=>{const v=$('#np').value.trim();if(!v)return;await tx('pallets','readwrite',s=>s.put({name:v}));pallet=v;view()};
+ $('#xl').onclick=exportXlsx;document.querySelectorAll('.item[data-p]').forEach(e=>e.onclick=ev=>{if(ev.target.dataset.big){big(ev.target.src);return}pallet=e.dataset.p;view()});
+}
+async function pal(){
+ const T=(await tx('tools','readonly',s=>s.getAll())).filter(t=>t.pallet===pallet).sort((a,b)=>b.id-a.id);
+ photo=null;
+ $('#app').innerHTML=`<div class="row"><button class="sec" id="back">← Retour</button></div><h1>Palette ${esc(pallet)}</h1>
+ <div class="card"><input type="text" id="des" placeholder="Désignation de l’outillage">
+ <div class="row"><label class="btn" for="ph">📷 Photo</label><button id="save">Enregistrer</button></div>
+ <input type="file" id="ph" accept="image/*" capture="environment" hidden><img id="prev" hidden></div>
+ <p class="mu">${T.length} outillage(s)</p>
+ ${T.map(t=>`<div class="item"><img src="${t.photo}" data-big="1"><div class="t"><b>${esc(t.name)}</b></div><button class="x" data-d="${t.id}">Suppr.</button></div>`).join('')}
+ <div class="row"><button class="sec x" id="dp">Supprimer cette palette</button></div>`;
+ $('#back').onclick=()=>{pallet=null;view()};
+ $('#ph').onchange=async e=>{const f=e.target.files[0];if(!f)return;photo=await shrink(f);const p=$('#prev');p.src=photo;p.hidden=false};
+ $('#save').onclick=async()=>{const n=$('#des').value.trim();if(!n){alert('Saisis une désignation.');return}if(!photo){alert('Prends une photo.');return}
+  await tx('tools','readwrite',s=>s.add({pallet,name:n,photo,ts:Date.now()}));pal();setTimeout(()=>$('#des').focus(),50)};
+ document.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{if(confirm('Supprimer cet outillage ?')){await tx('tools','readwrite',s=>s.delete(+b.dataset.d));pal()}});
+ document.querySelectorAll('img[data-big]').forEach(i=>i.onclick=()=>big(i.src));
+ $('#dp').onclick=async()=>{if(!confirm('Supprimer la palette et tous ses outillages ?'))return;
+  const all=await tx('tools','readonly',s=>s.getAll());
+  await tx('tools','readwrite',s=>{all.filter(t=>t.pallet===pallet).forEach(t=>s.delete(t.id))});
+  await tx('pallets','readwrite',s=>s.delete(pallet));pallet=null;view()};
+}
+function thumb(src){return new Promise(r=>{const i=new Image();i.onload=()=>{const k=Math.min(1,320/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=Math.round(i.width*k);c.height=Math.round(i.height*k);c.getContext('2d').drawImage(i,0,0,c.width,c.height);r({d:c.toDataURL('image/jpeg',.7),w:c.width,h:c.height})};i.onerror=()=>r(null);i.src=src})}
+async function exportXlsx(){
+ const m=$('#xm');
+ const dl={save:async({filename,data})=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));a.download=filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000)}};
+ if(!dl){m.textContent='Export indisponible dans ce navigateur.';return}
+ if(!window.ExcelJS){m.textContent='Bibliothèque Excel non chargée (vérifie la connexion).';return}
+ m.textContent='Préparation du fichier…';
+ try{
+  const T=await tx('tools','readonly',s=>s.getAll());
+  T.sort((a,b)=>a.pallet.localeCompare(b.pallet,'fr',{numeric:true})||a.id-b.id);
+  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('Outillages');
+  ws.columns=[{header:'Palette',key:'p',width:14},{header:'Désignation',key:'n',width:40},{header:'Photo',key:'f',width:26}];
+  ws.getRow(1).font={bold:true};
+  for(let i=0;i<T.length;i++){
+   const t=T[i],r=ws.addRow({p:t.pallet,n:t.name});r.height=100;r.alignment={vertical:'middle',wrapText:true};
+   const th=await thumb(t.photo);
+   if(th){const s=130/Math.max(th.w,th.h),id=wb.addImage({base64:th.d,extension:'jpeg'});ws.addImage(id,{tl:{col:2.1,row:i+1.05},ext:{width:th.w*s,height:th.h*s}})}
+   if(i%10===0)m.textContent='Préparation… '+(i+1)+'/'+T.length;
+  }
+  ws.views=[{state:'frozen',ySplit:1}];
+  const buf=await wb.xlsx.writeBuffer();
+  await dl.save({filename:'outillages-palettes.xlsx',data:buf});
+  m.textContent='Fichier prêt ('+T.length+' outillages).';
+ }catch(e){m.textContent=e&&e.code==='declined'?'Export annulé.':'Échec de l’export : '+((e&&e.message)||e)}
+}
+function big(src){const b=$('#big');b.innerHTML='<img src="'+src+'">';b.style.display='flex';b.onclick=()=>b.style.display='none'}
+function view(){pallet?pal():home()}
+open().then(d=>{db=d;view()}).catch(()=>{$('#app').textContent='Stockage indisponible sur ce navigateur.'});
+</script></body></html>
